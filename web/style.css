@@ -1,0 +1,511 @@
+:root {
+  color-scheme: light;
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --ink: #1d1d1f;
+  --secondary: #6e6e73;
+  --line: rgba(0, 0, 0, 0.12);
+  --accent: #0071e3;
+  --accent-soft: rgba(0, 113, 227, 0.1);
+  --danger: #b42318;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.07);
+  --radius: 18px;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  letter-spacing: -0.01em;
+}
+
+body:has(.shell) {
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+body:has(.shell) .top {
+  flex: none;
+  width: 100%;
+  max-width: none;
+  padding: 16px 28px;
+}
+
+a { color: var(--accent); text-decoration: none; }
+
+button, input, textarea { font: inherit; color: inherit; }
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 28px 0;
+}
+
+.brand { color: var(--ink); font-size: 14px; font-weight: 600; }
+.text-link { color: var(--secondary); font-size: 14px; }
+.brand:hover, .text-link:hover { color: var(--accent); }
+
+.admin {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 54px 28px 80px;
+}
+
+.shell {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
+}
+
+.eyebrow, .lede, .status-line, .meta {
+  color: var(--secondary);
+  line-height: 1.5;
+}
+
+.voice-intro { text-align: center; }
+
+.eyebrow {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(36px, 6vw, 52px);
+  font-weight: 650;
+  letter-spacing: -0.045em;
+  line-height: 1.08;
+}
+
+h2 { margin: 0 0 8px; font-size: 22px; font-weight: 600; }
+
+.voice-intro .lede {
+  margin: 12px auto 0;
+  max-width: 22em;
+  font-size: 14px;
+}
+
+.voice-pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 28px 20px;
+  background: #f3f3f5;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.voice-pane h1 { font-size: 34px; }
+
+.voice-stack {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (min-width: 861px) {
+  .voice-pane { position: relative; }
+  .voice-intro, .voice-actions { position: relative; z-index: 1; }
+  .voice-stack {
+    position: absolute;
+    inset: 0;
+  }
+}
+
+.voice-center {
+  position: relative;
+  width: 248px;
+  height: 248px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.stage,
+.stage-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.voice-button {
+  position: relative;
+  z-index: 1;
+  width: 116px;
+  height: 116px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: white;
+  color: var(--ink);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.voice-button:disabled { cursor: wait; }
+
+.voice-button[data-state="listening"] {
+  background: var(--accent);
+  color: white;
+}
+
+.voice-button[data-state="listening"]::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: inherit;
+  border: 1px solid rgba(0, 113, 227, 0.35);
+  animation: voice-ring 1.8s ease-out infinite;
+  pointer-events: none;
+}
+
+.voice-button[data-state="thinking"] .glyph-think,
+.voice-button[data-state="speaking"] .glyph-play {
+  animation: voice-fade 1.4s ease-in-out infinite;
+}
+
+.voice-glyph { display: grid; place-items: center; }
+
+.glyph {
+  grid-area: 1 / 1;
+  width: 34px;
+  height: 34px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.glyph-stop { display: none; fill: currentColor; stroke: none; }
+.glyph-think, .glyph-play { display: none; }
+.voice-button[data-state="listening"] .glyph-mic { display: none; }
+.voice-button[data-state="listening"] .glyph-stop { display: block; }
+.voice-button[data-state="thinking"] .glyph-mic { display: none; }
+.voice-button[data-state="thinking"] .glyph-think { display: block; }
+.voice-button[data-state="speaking"] .glyph-mic { display: none; }
+.voice-button[data-state="speaking"] .glyph-play { display: block; }
+
+.voice-caption {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.status-line {
+  min-height: 20px;
+  margin: 6px 0 0;
+  text-align: center;
+  font-size: 13px;
+}
+
+.status-line[data-state="speech-error"] { color: var(--danger); }
+
+.voice-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  color: #b0b0b5;
+  font-size: 12px;
+}
+
+.chat-column {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f7f7f8;
+}
+
+.log-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.log-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--secondary);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.log:not(:empty) + .log-empty { display: none; }
+
+.jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+}
+
+.jump-latest[hidden] { display: none; }
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 0 28px 18px;
+  padding: 6px 6px 6px 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+}
+
+.composer:focus-within { border-color: rgba(0, 0, 0, 0.16); }
+
+.composer textarea {
+  flex: 1;
+  min-width: 0;
+  max-height: 144px;
+  margin: 0;
+  padding: 8px 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  line-height: 1.5;
+  font-size: 15px;
+}
+
+.composer textarea::placeholder { color: #929297; }
+
+.send-button {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #ececef;
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.send-button:hover { background: #e2e2e6; }
+
+.admin-actions button,
+.path-form button[type="submit"] {
+  border: 0;
+  background: var(--ink);
+  color: white;
+  border-radius: 999px;
+  padding: 14px 22px;
+  cursor: pointer;
+}
+
+.quiet-button, .text-entry summary {
+  border: 0;
+  background: transparent;
+  color: var(--secondary);
+  cursor: pointer;
+}
+
+.path-form, .admin-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+input[type="text"], input[type="search"] {
+  flex: 1;
+  min-width: 220px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.log {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 28px 32px 20px;
+}
+
+.log:empty { display: none; }
+
+.message { max-width: min(100%, 68ch); }
+
+.message p { margin: 0; }
+
+.message.user {
+  align-self: flex-end;
+  max-width: min(78%, 520px);
+  padding: 10px 14px;
+  background: #e7e7eb;
+  border-radius: 18px 18px 6px 18px;
+  line-height: 1.6;
+  font-size: 16px;
+  white-space: pre-wrap;
+}
+
+.message.user.is-draft { opacity: 0.72; }
+
+.message.assistant {
+  align-self: flex-start;
+  padding: 2px 0;
+}
+
+.message.assistant .spoken {
+  font-size: 16.5px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.message.assistant.is-pending .spoken { color: var(--secondary); }
+
+.notice {
+  margin-top: 8px;
+  color: var(--secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.notice:empty { display: none; }
+
+.audio-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 12px;
+}
+
+.audio-controls .quiet-button {
+  padding: 0;
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.audio-controls .quiet-button:hover { color: var(--ink); }
+
+.audio-controls .quiet-button.needs-gesture {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+}
+
+details.evidence { margin-top: 10px; font-size: 14px; color: var(--secondary); }
+
+.quote {
+  margin: 8px 0 0;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.plain {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px;
+  margin-top: 16px;
+}
+
+.plain + .plain { margin-top: 16px; }
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+@keyframes voice-ring {
+  from { transform: scale(0.96); opacity: 0.7; }
+  to { transform: scale(1.16); opacity: 0; }
+}
+
+@keyframes voice-fade {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@media (max-width: 860px) {
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto auto;
+  }
+
+  .chat-column { display: contents; }
+
+  .log-wrap { grid-row: 1; background: #f7f7f8; }
+  .voice-pane { grid-row: 2; }
+  .composer { grid-row: 3; }
+
+  .voice-intro { display: none; }
+
+  .voice-pane {
+    border-right: 0;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    padding: 8px 16px 4px;
+  }
+
+  .voice-center { width: 148px; height: 148px; }
+  .voice-button { width: 84px; height: 84px; }
+  .glyph { width: 28px; height: 28px; }
+  .voice-caption { font-size: 15px; }
+  .log { padding: 18px 16px 12px; }
+  .composer { margin: 8px 12px calc(10px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 700px) {
+  .admin { padding: 42px 18px 60px; }
+  .top { padding-inline: 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-button[data-state="listening"]::after,
+  .voice-button[data-state="thinking"] .glyph-think,
+  .voice-button[data-state="speaking"] .glyph-play {
+    animation: none;
+  }
+}

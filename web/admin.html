@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>资料与设置</title>
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">返回对话</a>
+    <span class="text-link">资料与设置</span>
+  </header>
+  <main class="admin">
+    <h1>资料与设置</h1>
+    <p class="lede">密钥只写在项目里的 <code>.env</code>，不会出现在这个页面。</p>
+    <section id="status" class="plain"></section>
+    <section class="plain">
+      <h2>导入 Excel</h2>
+      <p>导入后会重建本机检索索引。如果当前问答实际走千帆，页面会说明这些条目没有进入千帆。</p>
+      <div class="admin-actions">
+        <button type="button" id="import-demo">导入演示资料</button>
+        <form id="upload-form">
+          <input id="upload-file" type="file" accept=".xlsx" />
+          <button type="submit">上传表格</button>
+        </form>
+      </div>
+      <form id="path-form" class="path-form">
+        <label for="excel-path">这台电脑上的表格路径</label>
+        <input id="excel-path" type="text" value="/Users/zxn./Desktop/茅盾/茅盾_统一章节总表.xlsx" />
+        <button type="submit">从路径导入</button>
+      </form>
+      <div id="import-result"></div>
+    </section>
+  </main>
+  <script type="module" src="/assets/admin.js"></script>
+</body>
+</html>

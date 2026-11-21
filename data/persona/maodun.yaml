@@ -1,0 +1,10 @@
+id: maodun
+role: page_disclaimer_only
+display_name: 茅盾数字人
+subject_names:
+  - 茅盾
+  - 沈雁冰
+  - 沈德鸿
+disclaimer: >
+  这是依据已导入资料生成的数字化模拟，不是茅盾本人在场。
+  口头回答和史料原话分开呈现。
