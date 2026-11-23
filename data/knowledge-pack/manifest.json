@@ -1,0 +1,59 @@
+{
+  "format": "maodun-knowledge-pack",
+  "format_version": 1,
+  "created_at": "2026-11-21T09:35:12+00:00",
+  "counts": {
+    "nodes": 12054,
+    "museum": 125,
+    "basics": 29
+  },
+  "sources": {
+    "memoir": {
+      "label": "我走过的道路",
+      "files": [
+        {
+          "name": "茅盾_统一章节总表.xlsx",
+          "sha256": "6cc361b784c7cba05be59bc9315bb11b4876f9b1c1b2d46014a02b197c7725a9"
+        },
+        {
+          "name": "茅盾_主题知识库.xlsx",
+          "sha256": "1018afcb6a5e43d090a9d7984bca4cce5583287180eca65c367023f9274c1851"
+        },
+        {
+          "name": "茅盾_基础知识.docx",
+          "sha256": "1080811334f7fa2778457dc98a84ae291ec9f1aa8db05b7bb4c385d446d56b78"
+        }
+      ],
+      "stats": {
+        "source_key": "memoir",
+        "label": "我走过的道路",
+        "chapter_rows": 12054,
+        "theme_rows": 12054,
+        "paired": 12054,
+        "only_chapter": 0,
+        "only_theme": 0,
+        "excluded": 2700,
+        "nodes_with_unresolved_fields": 20,
+        "basics_units": 29
+      }
+    },
+    "museum": {
+      "label": "馆藏手稿与书信",
+      "files": [
+        {
+          "name": "茅盾_馆藏手稿与书信内容整理.xlsx",
+          "sha256": "daf424bcda9999a11dae69338574d1a3f6cac66fe8d364d5947bc4cde2ebe029"
+        }
+      ],
+      "stats": {
+        "source_key": "museum",
+        "label": "馆藏手稿与书信",
+        "museum_sheets": {
+          "手稿": 44,
+          "书信": 81
+        },
+        "museum_items": 125
+      }
+    }
+  }
+}

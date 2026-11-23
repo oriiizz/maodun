@@ -14,9 +14,3 @@ data/*.backup*.db
 data/exports/
 data/originals/**
 !data/originals/.gitkeep
-data/sources/files/**
-!data/sources/files/.gitkeep
-data/knowledge-pack/**
-!data/knowledge-pack/.gitkeep
-data/voices/**
-!data/voices/.gitkeep

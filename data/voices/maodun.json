@@ -1,0 +1,8 @@
+{
+  "voice_id": "cosyvoice-v3-flash-maodun-e1cdefde65014ad6a4f69292b8dba2d8",
+  "target_model": "cosyvoice-v3-flash",
+  "status": "OK",
+  "prefix": "maodun",
+  "reference_wav": "data/voices/md-24k.wav",
+  "request_id": "314f49cd-d2e0-9b0a-a755-61a6816f6843"
+}
