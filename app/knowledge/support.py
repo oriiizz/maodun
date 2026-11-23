@@ -41,21 +41,21 @@ def answerable_text(hit: dict) -> str:
 
 
 def matching_basics(units: list[dict], question: str, *, limit: int = 2) -> list[dict]:
-    """基础知识按正文是否含问题要点补入，避免只被高分史料挤掉。"""
+    """基础知识按正文含有多少个问题要点来挑，避免被高分史料挤掉，也避免只因一个常见词就入选。"""
 
     tokens = distinctive_tokens(question)
     if not tokens:
         return []
-    chosen = []
-    for unit in units:
+    scored = []
+    for order, unit in enumerate(units):
         if unit.get("is_source_list") or unit.get("kind") != "basics":
             continue
         text = answerable_text(unit)
-        if any(token and token in text for token in tokens):
-            chosen.append(unit)
-        if len(chosen) >= limit:
-            break
-    return chosen
+        score = sum(1 for token in tokens if token and token in text)
+        if score:
+            scored.append((-score, order, unit))
+    scored.sort(key=lambda item: (item[0], item[1]))
+    return [unit for _score, _order, unit in scored[:limit]]
 
 
 _DRAFT = re.compile(r"提要|大纲|设想|未定稿|早期方案|删改方案")
@@ -79,7 +79,7 @@ def _text(value) -> str:
     return str(value or "")
 
 
-def _about_writing_process(hit: dict) -> bool:
+def process_material(hit: dict) -> bool:
     if hit.get("kind") == "basics":
         return False
     return bool(_SIDE_TOPIC.search("\n".join([_text(hit.get("title")), _text(hit.get("summary"))])))
@@ -88,7 +88,28 @@ def _about_writing_process(hit: dict) -> bool:
 def for_this_question(question: str, hits: list[dict]) -> list[dict]:
     if _PROCESS_ASK.search(question or "") or not _CONTENT_ASK.search(question or ""):
         return hits
-    return [hit for hit in hits if not is_draft_material(hit) and not _about_writing_process(hit)]
+    return [hit for hit in hits if not is_draft_material(hit) and not process_material(hit)]
+
+
+def scan_answerable(index, tokens: list[str], *, limit: int = 4, skip: set[str] | None = None) -> list[dict]:
+    """排名之外再按正文找。当次前几条没写到，不等于整库没有。"""
+
+    if index is None or not tokens:
+        return []
+    seen = set(skip or ())
+    found = []
+    for doc in getattr(index, "documents", []):
+        if doc.get("is_source_list") or doc.get("kind") == "museum":
+            continue
+        key = str(doc.get("entry_id") or doc.get("unit_id") or "")
+        if not key or key in seen:
+            continue
+        if any(token and token in answerable_text(doc) for token in tokens):
+            found.append(doc)
+            seen.add(key)
+        if len(found) >= limit:
+            break
+    return found
 
 
 def select_supported(question: str, hits: list[dict]) -> tuple[list[dict], list[str]]:

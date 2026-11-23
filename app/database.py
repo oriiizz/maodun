@@ -150,6 +150,29 @@ class Database:
             self._conn.executemany(sql, rows)
             self._conn.commit()
 
+    def transaction(self):
+        """多步写入同时成功或同时取消。不要在其中再调用会自行提交的方法。"""
+
+        database = self
+
+        class _Transaction:
+            def __enter__(self):
+                database._lock.acquire()
+                database._conn.execute("BEGIN")
+                return database._conn
+
+            def __exit__(self, exc_type, exc, tb):
+                try:
+                    if exc_type:
+                        database._conn.rollback()
+                    else:
+                        database._conn.commit()
+                finally:
+                    database._lock.release()
+                return False
+
+        return _Transaction()
+
     def query(self, sql: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
         with self._lock:
             return list(self._conn.execute(sql, params))

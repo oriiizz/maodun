@@ -17,6 +17,7 @@ from app.contracts import AnswerResult, ControlCue
 from app.ingest.demo_data import write_demo_workbook
 from app.ingest.excel_import import ImportError as WorkbookImportError
 from app.ingest.excel_import import import_workbook
+from app.knowledge.apply import stamp_value
 from app.knowledge.import_sources import CorpusImportError, import_corpus
 from app.knowledge.index import KnowledgeIndex
 from app.knowledge.respond import answer_from_corpus
@@ -40,6 +41,7 @@ class Runtime:
         ensure_schema(self.db)
         self.retriever = LocalChineseRetriever(self.db)
         self.knowledge = KnowledgeIndex.load(self.db)
+        self._knowledge_stamp = stamp_value(self.settings.root)
         self.sessions = SessionManager(self.db)
         self.recognizer = build_recognizer(settings, self.http)
         self.synthesizer = build_synthesizer(settings, self.http)
@@ -54,6 +56,17 @@ class Runtime:
         if reload:
             reload()
         self.knowledge = KnowledgeIndex.load(self.db)
+        self._knowledge_stamp = stamp_value(self.settings.root)
+
+    def _reload_knowledge_if_needed(self) -> None:
+        current = stamp_value(self.settings.root)
+        if current == self._knowledge_stamp:
+            return
+        self.knowledge = KnowledgeIndex.load(self.db)
+        from app.knowledge.stylebank import _parsed
+
+        _parsed.cache_clear()
+        self._knowledge_stamp = current
 
     def import_path(self, path: Path, *, is_demo: bool = False) -> dict:
         report = import_workbook(
@@ -69,8 +82,8 @@ class Runtime:
         return report
 
     def import_corpus(self, directory: Path) -> dict:
-        report = import_corpus(self.db, directory)
-        self.knowledge = KnowledgeIndex.load(self.db)
+        report = import_corpus(self.db, directory, root=self.settings.root)
+        self._reload_knowledge_if_needed()
         return report
 
     def import_demo(self) -> dict:
@@ -172,15 +185,19 @@ class Runtime:
     def search(self, query: str, limit: int = 8) -> list[dict]:
         return [to_plain(hit) for hit in self.retriever.search(query, limit=limit)]
 
-    def ask(self, question: str, session_id: str | None = None) -> dict:
+    def ask(self, question: str, session_id: str | None = None, visitor_id: str | None = None) -> dict:
         question = (question or "").strip()
         if not question:
             raise ValueError("请先输入问题。")
-        turn = self.sessions.begin_turn(session_id or "", question)
+        try:
+            turn = self.sessions.begin_turn(session_id or "", question, visitor_id=visitor_id)
+        except KeyError as exc:
+            raise KeyError(str(exc)) from exc
         self.playback.note_epoch(turn["session_id"], turn["epoch"])
         return self._ask_local(question, turn)
 
     def _ask_local(self, question: str, turn: dict) -> dict:
+        self._reload_knowledge_if_needed()
         session = self.sessions.get(turn["session_id"]) or {}
         try:
             focus = json.loads(session.get("focus_json") or "{}")
@@ -188,9 +205,10 @@ class Runtime:
             focus = {}
         if not isinstance(focus, dict):
             focus = {}
+        # 完整对话留在数据库。本轮按预算取近期原文，必要时找回更早原文，并带上较早摘要。
         history_rows = self.db.query(
             """
-            SELECT t.question, t.result_json,
+            SELECT t.id, t.question, t.result_json, t.status, t.created_at,
                    (
                        SELECT a.mode FROM answer_audit a
                         WHERE a.turn_id = t.id
@@ -203,21 +221,13 @@ class Runtime:
             """,
             (turn["session_id"], turn["turn_id"]),
         )
-        history = []
-        for row in history_rows:
-            spoken = ""
-            try:
-                payload = json.loads(row["result_json"] or "{}")
-            except json.JSONDecodeError:
-                payload = {}
-            if isinstance(payload, dict):
-                spoken = str(payload.get("spoken_text") or "")
-            mode = row["mode"] or ""
-            usable = mode not in {"model_error", "no_model", "not_ready"} and not spoken.startswith(
-                ("这一次没有答成", "资料还没有准备好")
-            )
-            if row["question"]:
-                history.append({"question": row["question"], "spoken": spoken, "usable": usable, "mode": mode})
+        from app.session.memory import build_context, turns_from_rows, update_after_answer
+
+        all_turns = turns_from_rows(history_rows)
+        memory_bundle = build_context(all_turns, question, focus)
+        focus = memory_bundle["focus"]
+        history = memory_bundle["working"]
+        memory_pack = memory_bundle["pack"]
         model = self._corpus_model()
         public, audit, focus = answer_from_corpus(
             self.knowledge,
@@ -226,7 +236,23 @@ class Runtime:
             history=history,
             focus=focus,
             provider_name="local_corpus",
+            memory=memory_pack,
         )
+        focus = update_after_answer(
+            focus,
+            all_turns,
+            question=question,
+            spoken=public.get("spoken_text") or "",
+            mode=str(audit.get("mode") or ""),
+            reading=(audit.get("trace") or {}).get("reading") or {},
+        )
+        if audit.get("trace") is not None:
+            audit["trace"]["memory"] = {
+                "meta": memory_pack.get("meta") or {},
+                "recalled_ids": (memory_pack.get("meta") or {}).get("recalled_ids") or [],
+                "summary_segments": len(memory_pack.get("earlier_summary") or []),
+                "open_topics": memory_pack.get("open_topics") or [],
+            }
         self.db.execute(
             "UPDATE sessions SET focus_json = ?, updated_at = ? WHERE id = ?",
             (json.dumps(focus, ensure_ascii=False), _now(), turn["session_id"]),
@@ -267,6 +293,10 @@ class Runtime:
                 audit.get("notice") or "",
                 _now(),
             ),
+        )
+        self.db.execute(
+            "INSERT OR REPLACE INTO answer_trace (turn_id, session_id, created_at, trace_json) VALUES (?, ?, ?, ?)",
+            (turn["turn_id"], turn["session_id"], _now(), json.dumps(audit.get("trace") or {}, ensure_ascii=False)),
         )
         accepted = self.sessions.finish_turn(turn["session_id"], turn["turn_id"], turn["epoch"], payload)
         if not accepted:

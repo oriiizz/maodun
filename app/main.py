@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -18,6 +19,13 @@ from app.speech.correction import correct_transcript
 from app.speech.interfaces import SpeechNotConnected
 
 WEB = Path(__file__).resolve().parent.parent / "web"
+VISITOR_ID = re.compile(r"^vis-[a-f0-9]{24}$")
+
+
+def _visitor(visitor_id: str = Header(alias="X-Visitor-Id")) -> str:
+    if not VISITOR_ID.fullmatch(visitor_id or ""):
+        raise HTTPException(400, "浏览器还没有稳定的访问标识。")
+    return visitor_id
 
 
 class PathImport(BaseModel):
@@ -104,25 +112,57 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"items": runtime.search(body.question)}
 
     @app.post("/api/ask")
-    def ask(body: AskBody) -> dict:
+    def ask(body: AskBody, visitor_id: str = Header(alias="X-Visitor-Id")) -> dict:
+        visitor_id = _visitor(visitor_id)
         try:
-            return runtime.ask(body.question, body.session_id)
+            return runtime.ask(body.question, body.session_id, visitor_id)
+        except KeyError as exc:
+            raise HTTPException(404, "没有找到这个会话。") from exc
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    @app.get("/api/sessions")
+    def list_sessions(visitor_id: str = Header(alias="X-Visitor-Id")) -> dict:
+        return {"items": runtime.sessions.list_for(_visitor(visitor_id))}
+
     @app.post("/api/sessions")
-    def create_session() -> dict:
-        return runtime.sessions.create()
+    def create_session(visitor_id: str = Header(alias="X-Visitor-Id")) -> dict:
+        return runtime.sessions.create(_visitor(visitor_id))
 
     @app.get("/api/sessions/{session_id}")
-    def session_detail(session_id: str) -> dict:
-        session = runtime.sessions.get(session_id)
+    def session_detail(session_id: str, visitor_id: str = Header(alias="X-Visitor-Id")) -> dict:
+        session = runtime.sessions.owned(session_id, _visitor(visitor_id))
         if session is None:
             raise HTTPException(404, "没有找到这个会话。")
-        return {"session": session, "turns": runtime.sessions.history(session_id)}
+        return {
+            "session": {"id": session["id"], "updated_at": session.get("updated_at") or ""},
+            "turns": runtime.sessions.history(session_id),
+        }
+
+    @app.get("/api/sessions/{session_id}/export")
+    def export_session(session_id: str, visitor_id: str = Header(alias="X-Visitor-Id")) -> Response:
+        if runtime.sessions.owned(session_id, _visitor(visitor_id)) is None:
+            raise HTTPException(404, "没有找到这个会话。")
+        return Response(
+            content=runtime.sessions.export_text(session_id),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=\"dialogue.txt\""},
+        )
+
+    @app.delete("/api/sessions/{session_id}")
+    def delete_session(session_id: str, visitor_id: str = Header(alias="X-Visitor-Id")) -> dict:
+        if not runtime.sessions.delete(session_id, _visitor(visitor_id)):
+            raise HTTPException(404, "没有找到这个会话。")
+        return {"ok": True}
+
+    @app.delete("/api/sessions")
+    def delete_sessions(visitor_id: str = Header(alias="X-Visitor-Id")) -> dict:
+        return {"ok": True, "deleted": runtime.sessions.delete_all(_visitor(visitor_id))}
 
     @app.post("/api/sessions/{session_id}/cancel")
-    def cancel(session_id: str) -> dict:
+    def cancel(session_id: str, visitor_id: str = Header(alias="X-Visitor-Id")) -> dict:
+        if runtime.sessions.owned(session_id, _visitor(visitor_id)) is None:
+            raise HTTPException(404, "没有找到这个会话。")
         session = runtime.sessions.cancel(session_id)
         if session is None:
             raise HTTPException(404, "没有找到这个会话。")

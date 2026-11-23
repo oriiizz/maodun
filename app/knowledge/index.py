@@ -1,4 +1,4 @@
-"""访客检索。禁用条目不进索引；同一条目 ID 只有一个节点。"""
+"""访客检索。同一份资料里的条目 ID 对应一条记录；不同资料可以有相同编号。"""
 
 from __future__ import annotations
 
@@ -27,8 +27,12 @@ class KnowledgeIndex:
         self.nodes = nodes
         self.items = items
         self.units = units
-        self.by_entry = {node["entry_id"]: node for node in nodes}
-        self.by_barcode = {item["barcode"]: item for item in items}
+        self.by_entry: dict[str, list[dict]] = {}
+        for node in nodes:
+            self.by_entry.setdefault(node["entry_id"], []).append(node)
+        self.by_barcode: dict[str, list[dict]] = {}
+        for item in items:
+            self.by_barcode.setdefault(item["barcode"], []).append(item)
         self.documents = nodes + items + [unit for unit in units if not unit.get("is_source_list")]
         token_lists = [tokenize(doc.get("searchable") or "") for doc in self.documents]
         self.ranker = BM25(token_lists)
@@ -75,10 +79,12 @@ class KnowledgeIndex:
         )
 
     def node(self, entry_id: str) -> dict | None:
-        return self.by_entry.get(entry_id)
+        matches = self.by_entry.get(entry_id) or []
+        return matches[0] if len(matches) == 1 else None
 
     def museum(self, barcode: str) -> dict | None:
-        return self.by_barcode.get(barcode)
+        matches = self.by_barcode.get(barcode) or []
+        return matches[0] if len(matches) == 1 else None
 
     def excluded_ids(self, db: Database) -> set[str]:
         rows = db.query("SELECT entry_id FROM corpus_nodes WHERE rag_excluded = 1")
@@ -92,7 +98,7 @@ class KnowledgeIndex:
         seen: set[str] = set()
 
         def add(doc: dict) -> None:
-            key = f"{doc['kind']}:{doc.get('entry_id') or doc.get('barcode') or doc.get('unit_id')}"
+            key = f"{doc['kind']}:{doc.get('source_key', '')}:{doc.get('entry_id') or doc.get('barcode') or doc.get('unit_id')}"
             if key in seen:
                 return
             seen.add(key)
@@ -101,16 +107,17 @@ class KnowledgeIndex:
         barcodes = BARCODE.findall(question)
         entry_ids = ENTRY_ID.findall(question)
         for barcode in barcodes:
-            item = self.by_barcode.get(barcode)
-            if item:
+            for item in self.by_barcode.get(barcode) or []:
                 add(item)
         for entry_id in entry_ids:
-            node = self.by_entry.get(entry_id)
-            if node:
+            for node in self.by_entry.get(entry_id) or []:
                 add(node)
         if barcodes or entry_ids:
             return chosen[:limit]
         tokens = [token for token in tokenize(question) if len(token) >= 2]
+        for book in re.findall(r"《([^》]{1,16})》", question):
+            if book not in tokens:
+                tokens.append(book)
         if not tokens or not self.documents:
             return []
         scored = []

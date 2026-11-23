@@ -46,4 +46,7 @@ def distinctive_tokens(question: str) -> list[str]:
         if len(token) < 2 or token in GENERIC or token in seen:
             continue
         seen.append(token)
+    for book in re.findall(r"《([^》]{1,16})》", question or ""):
+        if book not in seen and book not in GENERIC:
+            seen.append(book)
     return seen

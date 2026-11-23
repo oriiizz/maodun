@@ -42,6 +42,27 @@ micButton.addEventListener("click", () => {
   else beginListening();
 });
 
+const VISITOR_KEY = "maodun.visitor";
+const SESSION_KEY = "maodun.session";
+const restored = restoreConversation();
+
+function visitorId() {
+  const saved = localStorage.getItem(VISITOR_KEY) || "";
+  if (/^vis-[a-f0-9]{24}$/.test(saved)) return saved;
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  const created = `vis-${[...bytes].map((item) => item.toString(16).padStart(2, "0")).join("")}`;
+  localStorage.setItem(VISITOR_KEY, created);
+  return created;
+}
+
+function apiHeaders(extra = {}) {
+  return { "X-Visitor-Id": visitorId(), ...extra };
+}
+
+document.getElementById("history-toggle").addEventListener("click", showHistory);
+document.getElementById("download-chat").addEventListener("click", downloadCurrent);
+document.getElementById("delete-chat").addEventListener("click", deleteCurrent);
+document.getElementById("delete-all").addEventListener("click", deleteAllHistory);
 document.getElementById("cancel").addEventListener("click", () => cancelCurrent("已停止"));
 document.getElementById("new-session").addEventListener("click", startNewSession);
 document.getElementById("text-form").addEventListener("submit", (event) => {
@@ -76,6 +97,7 @@ jumpLatest.addEventListener("click", () => {
 });
 
 async function beginListening() {
+  await restored;
   cancelCurrent("", false);
   pinToLatest = true;
   const generation = nextGeneration();
@@ -182,6 +204,7 @@ async function stopAndSend() {
 }
 
 async function askFromText(question) {
+  await restored;
   cancelCurrent("", false);
   pinToLatest = true;
   const generation = nextGeneration();
@@ -191,11 +214,18 @@ async function askFromText(question) {
 
 async function answerQuestion(question, generation) {
   const turnId = session.turnId;
+  try {
+    await rememberSession();
+  } catch (error) {
+    fail(generation, error.message || "没有保存这次对话");
+    return;
+  }
+  if (generation !== session.generation) return;
   enter("thinking", "正在查找资料");
   const node = beginAnswer(turnId);
   const payload = await request("/api/ask", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: apiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ question, session_id: session.sessionId }),
     signal: signalFor(generation),
   }, generation);
@@ -328,7 +358,12 @@ function messageNode(turnId, role) {
   return log.querySelector(`[data-message="${turnId}-${role}"]`);
 }
 
+function clearChatError() {
+  document.getElementById("chat-error")?.remove();
+}
+
 function upsertUser(turnId, text, { draft }) {
+  clearChatError();
   let node = messageNode(turnId, "user");
   if (!node) {
     node = document.createElement("article");
@@ -486,7 +521,17 @@ function fail(generation, message) {
   if (pending?.classList.contains("is-pending")) pending.remove();
   setVoiceState("idle");
   stage.render({ mode: "error", turnId: session.turnId, playback: { active: false, progress: 0 } });
-  setStatus(message);
+  const text = message || "这次没有完成，请再试一次。";
+  setStatus(text);
+  let problem = document.getElementById("chat-error");
+  if (!problem) {
+    problem = document.createElement("p");
+    problem.id = "chat-error";
+    problem.className = "chat-error";
+    log.append(problem);
+  }
+  problem.textContent = text;
+  followLatest();
 }
 
 function cancelCurrent(caption, notifyBackend = true) {
@@ -503,7 +548,7 @@ function cancelCurrent(caption, notifyBackend = true) {
   setVoiceState("idle");
   if (session.audio) session.audio.pause();
   if (notifyBackend && session.sessionId) {
-    fetch(`/api/sessions/${session.sessionId}/cancel`, { method: "POST" }).catch(() => {});
+    fetch(`/api/sessions/${session.sessionId}/cancel`, { method: "POST", headers: apiHeaders() }).catch(() => {});
   }
   if (caption) {
     session.mode = "idle";
@@ -523,24 +568,158 @@ function releaseClips() {
 }
 
 async function startNewSession() {
-  cancelCurrent("", true);
+  await restored;
+  cancelCurrent("", false);
   releaseClips();
-  session.sessionId = null;
   log.replaceChildren();
   pinToLatest = true;
   jumpLatest.hidden = true;
   try {
-    const response = await fetch("/api/sessions", { method: "POST" });
+    const response = await fetch("/api/sessions", { method: "POST", headers: apiHeaders() });
     const payload = await response.json();
     if (!response.ok || !payload.id) throw new Error("新会话创建失败");
     session.sessionId = payload.id;
+    localStorage.setItem(SESSION_KEY, payload.id);
     session.mode = "idle";
     setVoiceState("idle");
     stage.render({ mode: "idle", turnId: session.turnId, playback: { active: false, progress: 0 } });
-    setStatus("已开始新对话");
+    setStatus("已开始新对话。之前的对话还在历史里。");
   } catch (error) {
     fail(session.generation, error.message || "新会话创建失败");
   }
+}
+
+async function rememberSession() {
+  await restored;
+  if (session.sessionId) {
+    localStorage.setItem(SESSION_KEY, session.sessionId);
+    return session.sessionId;
+  }
+  const response = await fetch("/api/sessions", { method: "POST", headers: apiHeaders() });
+  const payload = await response.json();
+  if (!response.ok || !payload.id) throw new Error("没有保存这次对话");
+  session.sessionId = payload.id;
+  localStorage.setItem(SESSION_KEY, payload.id);
+  return payload.id;
+}
+
+async function restoreConversation({ force = false } = {}) {
+  try {
+    const saved = localStorage.getItem(SESSION_KEY);
+    if (!saved) return;
+    const response = await fetch(`/api/sessions/${saved}`, { headers: apiHeaders() });
+    if (!force && session.sessionId && session.sessionId !== saved) return;
+    if (!response.ok) {
+      if (!session.sessionId) {
+        localStorage.removeItem(SESSION_KEY);
+        session.sessionId = null;
+      }
+      return;
+    }
+    const payload = await response.json();
+    const sameSession = session.sessionId === payload.session.id;
+    session.sessionId = payload.session.id;
+    localStorage.setItem(SESSION_KEY, session.sessionId);
+    if (!force && sameSession && log.childElementCount) return;
+    renderTranscript(payload.turns || []);
+  } catch {
+    return;
+  }
+}
+
+function renderTranscript(turns) {
+  log.replaceChildren();
+  turns.forEach((turn) => {
+    if (turn.status === "cancelled" || turn.status === "discarded") return;
+    if (turn.question) upsertUser(turn.id, turn.question, { draft: false });
+    if (turn.status === "running") {
+      beginAnswer(turn.id);
+      return;
+    }
+    if (!turn.spoken_text) return;
+    const node = beginAnswer(turn.id);
+    fillAnswer(node, { spoken_text: turn.spoken_text, system_notice: "", evidence: [] });
+  });
+}
+
+async function showHistory() {
+  const panel = document.getElementById("history-panel");
+  panel.hidden = !panel.hidden;
+  if (panel.hidden) return;
+  panel.replaceChildren();
+  const response = await fetch("/api/sessions", { headers: apiHeaders() });
+  const payload = await response.json();
+  const items = payload.items || [];
+  if (!items.length) {
+    panel.textContent = "还没有保存的对话";
+    return;
+  }
+  items.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "history-item";
+    if (item.id === session.sessionId) button.classList.add("is-current");
+    button.textContent = item.title;
+    button.addEventListener("click", () => openSaved(item.id));
+    panel.append(button);
+  });
+}
+
+async function openSaved(sessionId) {
+  cancelCurrent("", false);
+  releaseClips();
+  session.sessionId = sessionId;
+  localStorage.setItem(SESSION_KEY, sessionId);
+  document.getElementById("history-panel").hidden = true;
+  await restoreConversation({ force: true });
+  setStatus("已打开保存的对话");
+}
+
+async function downloadCurrent() {
+  if (!session.sessionId) {
+    setStatus("当前还没有可下载的对话");
+    return;
+  }
+  const response = await fetch(`/api/sessions/${session.sessionId}/export`, { headers: apiHeaders() });
+  if (!response.ok) {
+    setStatus("没有下载到这段对话");
+    return;
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "对话.txt";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function deleteCurrent() {
+  if (!session.sessionId) return;
+  if (!window.confirm("只删除这一段对话。其他历史仍会保留。删除后刷新也不会再出现。")) return;
+  const response = await fetch(`/api/sessions/${session.sessionId}`, { method: "DELETE", headers: apiHeaders() });
+  if (!response.ok) {
+    setStatus("没有删除这段对话");
+    return;
+  }
+  localStorage.removeItem(SESSION_KEY);
+  session.sessionId = null;
+  log.replaceChildren();
+  setStatus("已删除当前对话");
+}
+
+async function deleteAllHistory() {
+  if (!window.confirm("删除这个浏览器里保存的全部对话。资料和声音不会受影响。删除后无法恢复。")) return;
+  const response = await fetch("/api/sessions", { method: "DELETE", headers: apiHeaders() });
+  if (!response.ok) {
+    setStatus("没有删除历史");
+    return;
+  }
+  localStorage.removeItem(SESSION_KEY);
+  session.sessionId = null;
+  log.replaceChildren();
+  document.getElementById("history-panel").hidden = true;
+  setStatus("已删除全部历史");
 }
 
 function nextGeneration() {
@@ -562,7 +741,7 @@ async function request(url, options, generation) {
     const response = await fetch(url, options);
     if (generation !== session.generation) return null;
     const data = await response.json();
-    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "请求没有成功");
+    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "这句话没有发送成功，请再试一次。");
     return data;
   } catch (error) {
     if (error.name === "AbortError") return null;

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>与茅盾对话</title>
-  <link rel="stylesheet" href="/assets/style.css?v=8" />
+  <link rel="stylesheet" href="/assets/style.css?v=10" />
 </head>
 <body>
   <header class="top">
@@ -40,6 +40,13 @@
       </div>
     </section>
     <section class="chat-column">
+      <div class="chat-tools">
+        <button type="button" id="history-toggle" class="quiet-button">历史对话</button>
+        <button type="button" id="download-chat" class="quiet-button">下载当前对话</button>
+        <button type="button" id="delete-chat" class="quiet-button">删除当前对话</button>
+        <button type="button" id="delete-all" class="quiet-button">删除全部历史</button>
+      </div>
+      <div id="history-panel" class="history-panel" hidden></div>
       <div class="log-wrap">
         <div id="log" class="log" role="log" aria-label="对话记录"></div>
         <p class="log-empty">对话会显示在这里</p>
@@ -52,6 +59,6 @@
       </form>
     </section>
   </main>
-  <script type="module" src="/assets/app.js?v=10"></script>
+  <script type="module" src="/assets/app.js?v=13"></script>
 </body>
 </html>

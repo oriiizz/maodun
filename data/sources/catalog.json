@@ -1,0 +1,20 @@
+{
+  "说明": "路径相对于本文件所在目录。原始文件仍可留在资料提供方自己的文件夹，程序不读取桌面绝对路径。",
+  "materials": [
+    {
+      "source_key": "memoir",
+      "label": "我走过的道路",
+      "chapter": "files/茅盾_统一章节总表.xlsx",
+      "chapter_sheet": "我走过的道路",
+      "theme": "files/茅盾_主题知识库.xlsx",
+      "theme_sheet": "主题知识库",
+      "basics": "files/茅盾_基础知识.docx"
+    },
+    {
+      "source_key": "museum",
+      "label": "馆藏手稿与书信",
+      "museum": "files/茅盾_馆藏手稿与书信内容整理.xlsx",
+      "sheets": ["手稿", "书信"]
+    }
+  ]
+}

@@ -17,7 +17,7 @@
     <section id="status" class="plain"></section>
     <section class="plain">
       <h2>导入 Excel</h2>
-      <p>导入后会重建本机检索索引。如果当前问答实际走千帆，页面会说明这些条目没有进入千帆。</p>
+      <p>这里导入的表格只进入演示条目，用来核对旧表。观众提问不读取这些条目。</p>
       <div class="admin-actions">
         <button type="button" id="import-demo">导入演示资料</button>
         <form id="upload-form">
@@ -27,7 +27,7 @@
       </div>
       <form id="path-form" class="path-form">
         <label for="excel-path">这台电脑上的表格路径</label>
-        <input id="excel-path" type="text" value="/Users/zxn./Desktop/茅盾/茅盾_统一章节总表.xlsx" />
+        <input id="excel-path" type="text" placeholder="填写这台电脑上的 .xlsx 路径" />
         <button type="submit">从路径导入</button>
       </form>
       <div id="import-result"></div>

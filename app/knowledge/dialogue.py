@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import re
 
-GREETING = "你好。今天想谈哪一部作品，或一段有记载的经历，都可以。"
-THANKS = "不客气。还想谈作品，或一段有记载的经历，可以继续说。"
+GREETING = "你好。想谈哪一部作品，或是哪一段经历，都可以。"
+THANKS = "不客气。还想谈什么，接着说就是。"
 FAREWELL = "好，先谈到这里。愿意的时候，我们再谈文学。"
 IDENTITY_REPLY = "我是依据茅盾的作品和生平资料构建的数字化身，并不是茅盾本人。"
 PROBE = "在。你想谈作品，还是谈一段经历，都可以。"
 HERE = "在。你说。"
-CLARIFY = "你说的是哪一件事，或哪一部作品？我只按有记载的内容来谈。"
-LENGTH_CLARIFY = "你想让我简短还是详细地谈哪一部作品，或哪一段有记载的经历？"
-CONTENT_NEXT = "你是想接着听这部作品里后来发生的事，还是想问书写完之后的情况？我按你指的那一头来说。"
+CLARIFY = "你指的是哪一件事，或是哪一部作品？"
+LENGTH_CLARIFY = "你想让我谈哪一部作品，或是哪一段经历？说了我再按你要的长短来讲。"
+CONTENT_NEXT = "你是想接着听这部作品里后来的事，还是想问书写完之后的情况？"
 NEXT_CLARIFY = "你是想问这件事后来怎样？若指的是别的，说一下是哪一件。"
-PERSON_CLARIFY = "你说的是哪一位？我按有记载的来说。"
+PERSON_CLARIFY = "你说的是哪一位？"
 
 _PUNCT = re.compile(r"[\s，,。！？!?、~～]+")
 _GREETING = re.compile(r"^(?:你|您)?好(?:呀|啊|吗)?$|^(?:早上好|下午好|晚上好|嗨|哈喽|在吗|您好)$")
@@ -33,7 +33,6 @@ _CONTEXT = re.compile(
 _BARE_NEXT = re.compile(r"^(?:后来呢|然后呢|接着呢|还有呢|那之后呢|那呢|继续说|继续)[？?。]*$")
 _CONTENT_TOPIC = re.compile(r"主要写|写了什么|写些什么|写什么|讲了什么|内容")
 _TIME_TOPIC = re.compile(r"之后|后来|然后|什么时候|哪一年|哪年|出生|逝世|进了|做过|做了什么")
-_PERSON = re.compile(r"刚才说的那个人|刚才那位|那个人是谁|这个人是谁")
 _OPEN = re.compile(r"我觉得|时觉得|我感觉|读起来|难懂|很难进入|人物很多|写不下去|不知道怎么下笔|怎么下笔|卡文|给我(?:一点|些)?建议|怎样写|如何写好|开头很难")
 _FACT_ASK = re.compile(r"原名|本名|笔名|哪一年|出生|逝世|主要写|写了什么|写些什么|内容是什么|馆藏|条码")
 _DETAIL = re.compile(r"详细|展开讲|说细|讲细|多说一些|说得详细")
@@ -82,10 +81,6 @@ def is_self_intro(question: str) -> bool:
     return _INTRO.search(question or "") is not None and not is_reality_check(question)
 
 
-def asks_identity(question: str) -> bool:
-    return is_reality_check(question)
-
-
 def length_preference(question: str) -> str:
     if _DETAIL.search(question or ""):
         return "detail"
@@ -105,24 +100,47 @@ def open_chat(question: str) -> bool:
     return True
 
 
-def next_step_reply(question: str, topic: str) -> str | None:
-    """含糊的“后来呢”先问清。上一问本身是时间或经历时，才接着谈。"""
+def _named_subject(topic: str, previous: str) -> str:
+    """从上一问和上一句里取出实际提到的对象，不另编一个。"""
+
+    names: list[str] = []
+    matched = re.search(r"([\u4e00-\u9fff]{2,6})(?:是怎样|是谁|写了|主要)", topic or "")
+    if matched:
+        names.append(matched.group(1))
+    for book in re.findall(r"《([^》]{1,16})》", f"{topic or ''}\n{previous or ''}"):
+        label = f"《{book}》"
+        if label not in names and book not in names:
+            names.append(label)
+        if len(names) >= 2:
+            break
+    if names:
+        return "、".join(names[:2])
+    place = re.search(r"(?:进|到|去|谈)([\u4e00-\u9fff]{2,8})", topic or "")
+    if place:
+        return place.group(1)
+    sentence = re.split(r"[。！？]", previous or "")[0].strip()
+    return sentence[:12] if sentence else ""
+
+
+def next_step_reply(question: str, topic: str, previous: str = "") -> str | None:
+    """含糊的“后来呢”先问清。指明上一句里的对象。上一问本身是一段时间经历时，才接着谈。"""
 
     if not _BARE_NEXT.fullmatch(_compact(question)):
         return None
+    subject = _named_subject(topic, previous)
     if _CONTENT_TOPIC.search(topic or ""):
+        if subject:
+            return f"上一句谈的是{subject}。你是想接着听其中后来的情节，还是问写完以后的事？"
         return CONTENT_NEXT
     if _TIME_TOPIC.search(topic or ""):
         return None
+    if subject:
+        return f"上一句谈的是{subject}。你是想问这件事后来怎样，还是另有所指？"
     return NEXT_CLARIFY
 
 
 def asks_correction(question: str) -> bool:
     return re.search(r"收回|说得太满|说得过|亲眼记得|过于确定", question or "") is not None
-
-
-def asks_which_person(question: str) -> bool:
-    return _PERSON.search(question or "") is not None
 
 
 def is_contextual(question: str) -> bool:

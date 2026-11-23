@@ -1,4 +1,4 @@
-"""模型只负责把已经选中的证据说成口头回答。没有证据时不会调用这里。"""
+"""把已经准备好的消息发给 DeepSeek 官方接口。访客问答只使用这里的 DeepSeekChatModel。"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ class ChatModel(Protocol):
     def missing_notice(self) -> str:
         ...
 
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(self, messages: list[dict[str, str]], **options) -> str:
         ...
 
 
@@ -85,18 +85,28 @@ class DeepSeekChatModel(_HttpChat):
     def missing_notice(self) -> str:
         return "尚未配置 DeepSeek。请在项目根目录的 .env 填写 DEEPSEEK_API_KEY。当前不会编造人物回答。"
 
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        purpose: str = "answer",
+        json_mode: bool = False,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> str:
+        """purpose 只供调用方记录用途，不发给模型。"""
+
         if not self.configured():
             raise ModelCallError(self.missing_notice())
         url = self.settings.deepseek_base_url.rstrip("/") + "/chat/completions"
-        return self._post(
-            url,
-            self.settings.deepseek_api_key,
-            {
-                "model": self.settings.deepseek_model,
-                "messages": messages,
-                "temperature": 0.2,
-                "thinking": {"type": "disabled"},
-            },
-            "DeepSeek",
-        )
+        payload: dict[str, Any] = {
+            "model": self.settings.deepseek_model,
+            "messages": messages,
+            "temperature": 0.2 if temperature is None else temperature,
+            "thinking": {"type": "disabled"},
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+        return self._post(url, self.settings.deepseek_api_key, payload, "DeepSeek")
